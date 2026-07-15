@@ -1,0 +1,318 @@
+// PSMS — Project Supervision Management System
+// Prisma schema. PostgreSQL datasource (Supabase), 11 models, 9 enums.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  STUDENT
+}
+
+enum ProjectStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum TopicStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVISION_REQUIRED
+}
+
+enum DocumentType {
+  PROPOSAL
+  DRAFT
+  LITERATURE_REVIEW
+  METHODOLOGY
+  DATA_ANALYSIS
+  FINAL_REPORT
+  OTHER
+}
+
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+enum FeedbackStatus {
+  PENDING
+  ADDRESSED
+  DISMISSED
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  TOPIC_SUBMITTED
+  TOPIC_APPROVED
+  TOPIC_REJECTED
+  DOCUMENT_UPLOADED
+  FEEDBACK_GIVEN
+  MILESTONE_COMPLETED
+  MILESTONE_DUE
+  ALLOCATION_ASSIGNED
+}
+
+enum AllocationStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  password   String
+  name       String
+  role       Role     @default(STUDENT)
+  avatar     String?
+  department String?
+  matricNo   String?  @unique
+  staffId    String?  @unique
+  phone      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  studentProfile  StudentProfile?
+  supervisorProfile SupervisorProfile?
+  // Back-relation for StudentProfile.supervisor (named to disambiguate)
+  supervisedStudentProfiles StudentProfile[] @relation("StudentSupervisor")
+
+  projectsAsStudent     Project[] @relation("ProjectStudent")
+  projectsAsSupervisor  Project[] @relation("ProjectSupervisor")
+
+  topicsAsStudent     Topic[] @relation("TopicStudent")
+  topicsAsSupervisor  Topic[] @relation("TopicSupervisor")
+
+  uploadedDocuments Document[]
+  givenFeedback     Feedback[] @relation("FeedbackAuthor")
+  receivedFeedback  Feedback[] @relation("FeedbackStudent")
+
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+
+  notifications Notification[]
+
+  allocatedStudents    Allocation[] @relation("AllocatedBy")
+  studentAllocation    Allocation[] @relation("StudentAllocation")
+  supervisorAllocation Allocation[] @relation("SupervisorAllocation")
+}
+
+model StudentProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  level          String   @default("400")
+  programme      String?
+  supervisorId   String?
+  enrollmentYear Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supervisor User? @relation("StudentSupervisor", fields: [supervisorId], references: [id])
+}
+
+model SupervisorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  specialization  String?
+  maxStudents     Int      @default(5)
+  currentLoad     Int      @default(0)
+  bio             String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  studentId       String        @unique
+  supervisorId    String
+  status          ProjectStatus @default(NOT_STARTED)
+  startDate       DateTime?
+  expectedEndDate DateTime?
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  progress        Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  student    User        @relation("ProjectStudent", fields: [studentId], references: [id])
+  supervisor User        @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
+  topics     Topic[]
+  documents  Document[]
+  milestones Milestone[]
+  feedback   Feedback[]
+  messages   Message[]
+}
+
+model Topic {
+  id              String      @id @default(cuid())
+  title           String
+  description     String
+  studentId       String
+  supervisorId    String
+  projectId       String?
+  status          TopicStatus @default(PENDING)
+  submittedAt     DateTime    @default(now())
+  reviewedAt      DateTime?
+  reviewerComment String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  student    User     @relation("TopicStudent", fields: [studentId], references: [id])
+  supervisor User     @relation("TopicSupervisor", fields: [supervisorId], references: [id])
+  project    Project? @relation(fields: [projectId], references: [id])
+}
+
+model Document {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  fileName     String
+  fileSize     Int
+  fileType     String
+  filePath     String
+  version      Int          @default(1)
+  documentType DocumentType
+  projectId    String
+  uploadedById String
+  isFinal      Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  project    Project   @relation(fields: [projectId], references: [id])
+  uploadedBy User      @relation(fields: [uploadedById], references: [id])
+  feedback   Feedback[]
+}
+
+model Milestone {
+  id            String          @id @default(cuid())
+  name          String
+  description   String?
+  projectId     String
+  dueDate       DateTime?
+  completedDate DateTime?
+  status        MilestoneStatus @default(NOT_STARTED)
+  order         Int
+  weight        Int             @default(10)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id         String         @id @default(cuid())
+  content    String
+  documentId String?
+  projectId  String
+  authorId   String
+  studentId  String
+  status     FeedbackStatus @default(PENDING)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  document Document? @relation(fields: [documentId], references: [id])
+  project  Project  @relation(fields: [projectId], references: [id])
+  author   User     @relation("FeedbackAuthor", fields: [authorId], references: [id])
+  student  User     @relation("FeedbackStudent", fields: [studentId], references: [id])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String
+  projectId  String?
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  sender   User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  project  Project? @relation(fields: [projectId], references: [id])
+}
+
+model Notification {
+  id        String          @id @default(cuid())
+  title     String
+  message   String
+  type      NotificationType
+  userId    String
+  link      String?
+  isRead    Boolean         @default(false)
+  readAt    DateTime?
+  createdAt DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Allocation {
+  id           String           @id @default(cuid())
+  studentId    String
+  supervisorId String
+  academicYear String           @default("Current")
+  semester     String           @default("Full Session")
+  status       AllocationStatus @default(ACTIVE)
+  allocatedBy  String
+  allocatedAt  DateTime         @default(now())
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  student   User @relation("StudentAllocation", fields: [studentId], references: [id])
+  supervisor User @relation("SupervisorAllocation", fields: [supervisorId], references: [id])
+  allocator User @relation("AllocatedBy", fields: [allocatedBy], references: [id])
+}
+
+/// System-wide configuration (singleton). Holds app name, logo, admin password
+/// and other top-level settings managed on the admin Settings page.
+model SystemConfig {
+  id                      String   @id @default(cuid())
+  appName                 String   @default("PSMS — Project Supervision Management System")
+  appShortName            String   @default("PSMS")
+  logoUrl                 String?
+  adminPassword           String?
+  // Global default cap on the number of students a single supervisor may
+  // be allocated. Applied when a new allocation is created. Lowering this
+  // value does NOT revoke existing allocations — it only blocks NEW ones
+  // that would push a supervisor above the limit.
+  maxStudentsPerSupervisor Int      @default(5)
+  updatedAt                DateTime @updatedAt
+  createdAt                DateTime @default(now())
+}
