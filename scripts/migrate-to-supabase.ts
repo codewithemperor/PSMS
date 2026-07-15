@@ -159,7 +159,12 @@ async function main() {
         const result = await new Promise<{ public_id: string; bytes: number }>(
           (resolve, reject) => {
             const stream = cloudinary.uploader.upload_stream(
-              { public_id: publicId, resource_type: "raw", overwrite: false },
+              {
+                public_id: publicId,
+                resource_type: "raw",
+                type: "authenticated", // keep migrated files private (same as app uploads)
+                overwrite: false,
+              },
               (err, res) => {
                 if (err || !res) return reject(err ?? new Error("no result"))
                 resolve({ public_id: res.public_id, bytes: res.bytes })

@@ -53,13 +53,14 @@ export async function GET() {
     success: true,
     data: {
       // The URL the browser posts the file to.
-      uploadUrl: `https://api.cloudinary.com/v1_1/${params.cloudName}/raw/upload`,
+      uploadUrl: params.uploadUrl,
       folder: params.folder,
       timestamp: params.timestamp,
       signature: params.signature,
       apiKey: params.apiKey,
-      // Cloudinary returns the full public_id (folder/name) after upload;
-      // the browser forwards it to /api/documents/upload.
+      // Files are private (type: "authenticated"); the browser must echo this
+      // in the upload form or the signature won't match.
+      type: "authenticated",
     },
   })
 }

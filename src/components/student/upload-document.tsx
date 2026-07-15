@@ -227,21 +227,25 @@ export function UploadDocument() {
         timestamp,
         signature,
         apiKey,
+        type,
       }: {
         uploadUrl: string
         folder: string
         timestamp: number
         signature: string
         apiKey: string
+        type: string
       } = urlJson.data
 
-      // 2. Upload the file straight to Cloudinary.
+      // 2. Upload the file straight to Cloudinary. `type` must be sent so it
+      // matches the signed params (files are private/authenticated).
       const cloudForm = new FormData()
       cloudForm.append("file", file!)
       cloudForm.append("folder", folder)
       cloudForm.append("timestamp", String(timestamp))
       cloudForm.append("signature", signature)
       cloudForm.append("api_key", apiKey)
+      cloudForm.append("type", type)
       const cloudRes = await fetch(uploadUrl, { method: "POST", body: cloudForm })
       if (!cloudRes.ok) {
         const detail = await cloudRes.text().catch(() => "")

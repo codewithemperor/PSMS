@@ -54,12 +54,18 @@ export interface SignedUploadParams {
   apiKey: string
   /** `resource_type` to pass in the upload URL: "raw" for documents. */
   resourceType: "raw"
+  /** The upload URL the browser POSTs to. */
+  uploadUrl: string
 }
 
 /**
  * Build signed parameters the browser needs to upload a file directly to
  * Cloudinary. The signature authorizes a single upload into `psms/<subfolder>`.
  * Expires in ~1 hour (Cloudinary's default signature window).
+ *
+ * Files are uploaded as `type: "authenticated"` so they are NOT publicly
+ * accessible — only a signed URL (generated server-side at download time)
+ * can fetch them. This keeps student documents private.
  */
 export function signUploadParams(subfolder: string): SignedUploadParams {
   ensureConfigured()
@@ -69,9 +75,12 @@ export function signUploadParams(subfolder: string): SignedUploadParams {
 
   const folder = subfolder ? `${ROOT_FOLDER}/${subfolder}` : ROOT_FOLDER
   const timestamp = Math.round(Date.now() / 1000)
+  // `type` MUST be part of the signature, and the browser must send the same
+  // value in its form data, or the upload is rejected.
+  const type = "authenticated"
 
   const signature = cloudinary.utils.api_sign_request(
-    { folder, timestamp },
+    { folder, timestamp, type },
     apiSecret,
   )
 
@@ -82,23 +91,35 @@ export function signUploadParams(subfolder: string): SignedUploadParams {
     signature,
     apiKey,
     resourceType: "raw",
+    uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`,
   }
 }
 
 /**
- * Produce a short-lived (1 hour) signed URL for downloading a raw asset.
+ * Produce a short-lived (1 hour) signed delivery URL for a raw asset.
  * The download route 302-redirects the browser to this URL.
+ *
+ * Files are uploaded with `type: "authenticated"`, so they can ONLY be
+ * fetched via a signed URL — they are not publicly accessible. We build the
+ * authenticated delivery URL via `utils.url({ type: "authenticated" })` rather
+ * than the `private_download_url` API, because the latter (the v1 download
+ * endpoint) does not reliably resolve raw files whose public_id includes an
+ * extension, while the delivery URL does.
  *
  * `publicId` is what's stored in `Document.filePath`. Pass the original
  * `fileName` so Cloudinary serves it with a friendly `Content-Disposition`.
  */
 export function signedDownloadUrl(publicId: string, fileName?: string): string {
   ensureConfigured()
-  return cloudinary.utils.private_download_url(publicId, "raw", {
-    // Cloudinary inspects the extension of `attachmentName` to pick a
-    // Content-Type, so keep the real extension on it.
-    attachmentName: fileName || publicId.split("/").pop() || "document",
-    expiresAt: 3600, // 1 hour, in seconds
+  return cloudinary.utils.url(publicId, {
+    resource_type: "raw",
+    type: "authenticated",
+    sign_url: true,
+    // Force a download (Content-Disposition: attachment) with the real name.
+    attachment: fileName || publicId.split("/").pop() || "document",
+    // Absolute Unix timestamp (seconds) — 1 hour from now.
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    secure: true,
   })
 }
 
